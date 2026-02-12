@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>IA Mascotas - Detector 🐾</title>
+    <title>Clasificador de Mascotas 🐾</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -28,6 +28,7 @@
         text-align: center;
         min-height: 70px;
         margin-top: 15px;
+        transition: all 0.3s;
       }
       .canvas-container { 
         margin: 0 auto; 
@@ -44,9 +45,7 @@
         padding: 12px 30px;
         border-radius: 50px;
         font-weight: bold;
-        transition: 0.3s;
       }
-      .btn-personalizado:hover { background: var(--rosa-principal); transform: scale(1.05); }
       #status { border-radius: 15px; font-weight: bold; }
     </style>
   </head>
@@ -54,14 +53,14 @@
     
     <header class="header text-center">
         <h1 class="fw-bold">¿Perro o Gato? 🐶🐱</h1>
-        <p class="mb-0">Detección con Red Neuronal Convolucional</p>
+        <p class="mb-0">Detección Inteligente en Tiempo Real</p>
     </header>
 
     <main class="container">
       <div class="row">
         <div class="col-12 col-md-6 offset-md-3 text-center">
           
-          <div id="status" class="alert alert-light mb-4">Cargando modelo...</div>
+          <div id="status" class="alert alert-light mb-4">Iniciando sistema...</div>
 
           <video id="video" playsinline autoplay style="width: 1px; visibility: hidden; position: absolute;"></video>
           
@@ -88,35 +87,55 @@
       var currentStream = null;
       var facingMode = "user";
 
-      // CARGAR MODELO USANDO RUTA RELATIVA
-      (async () => {
+      // FUNCIÓN PARA CARGAR EL MODELO CON ANTICACHÉ Y PARCHE
+      async function cargarModelo() {
           console.log("Cargando modelo...");
           try {
-              // El ./ es clave para que busque en la carpeta del proyecto
-              modelo = await tf.loadLayersModel('./model.json');
-              document.getElementById("status").innerText = "¡IA Lista! ✨";
-              document.getElementById("status").className = "alert alert-success text-success";
-          } catch (error) {
-              document.getElementById("status").innerText = "Error: Verifica que los 19 archivos .bin estén en la misma carpeta.";
-              document.getElementById("status").className = "alert alert-danger text-danger";
-              console.error(error);
-          }
-      })();
+              // 1. Forzamos descarga del JSON fresco
+              const response = await fetch('./model.json?v=' + Date.now());
+              const modelJson = await response.json();
 
-      window.onload = function() { mostrarCamara(); }
+              // 2. PARCHE MANUAL: Si falta la forma de entrada, se la inyectamos en memoria
+              if (modelJson.modelTopology && modelJson.modelTopology.model_config) {
+                  let layers = modelJson.modelTopology.model_config.config.layers;
+                  if (layers[0].class_name === 'InputLayer' && !layers[0].config.batch_input_shape) {
+                      layers[0].config.batch_input_shape = [null, 150, 150, 3];
+                      console.log("Parche batch_input_shape aplicado con éxito");
+                  }
+              }
+
+              // 3. Cargamos el modelo desde el objeto modificado
+              modelo = await tf.loadLayersModel(tf.io.fromMemory(
+                  modelJson, 
+                  modelJson.weightsManifest, 
+                  window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1)
+              ));
+
+              document.getElementById("status").innerText = "¡IA Lista! ✨";
+              document.getElementById("status").className = "alert alert-success text-success text-center";
+              console.log("¡Modelo cargado!");
+          } catch (error) {
+              document.getElementById("status").innerText = "Error: El navegador bloqueó el modelo.";
+              document.getElementById("status").className = "alert alert-danger text-danger text-center";
+              console.error("Error detallado:", error);
+          }
+      }
+
+      window.onload = function() { 
+          mostrarCamara(); 
+          cargarModelo();
+      }
 
       function mostrarCamara() {
           var opciones = { audio: false, video: { facingMode: facingMode, width: 400, height: 400 } };
-          if(navigator.mediaDevices.getUserMedia) {
-              navigator.mediaDevices.getUserMedia(opciones)
-                  .then(function(stream) {
-                      currentStream = stream;
-                      video.srcObject = currentStream;
-                      procesarCamara();
-                      predecir();
-                  })
-                  .catch(function(err) { console.log("Cámara no disponible", err); });
-          }
+          navigator.mediaDevices.getUserMedia(opciones)
+              .then(function(stream) {
+                  currentStream = stream;
+                  video.srcObject = currentStream;
+                  procesarCamara();
+                  predecir();
+              })
+              .catch(err => console.log("Cámara error:", err));
       }
 
       function cambiarCamara() {
@@ -134,26 +153,21 @@
           if (modelo != null) {
               const tempCanvas = document.getElementById("othercanvas");
               const tempCtx = tempCanvas.getContext("2d");
-              
-              // Redimensionar para la IA
               tempCtx.drawImage(canvas, 0, 0, 400, 400, 0, 0, 150, 150);
 
               const score = tf.tidy(() => {
                   const imgData = tempCtx.getImageData(0,0,150,150);
-                  // Crear tensor y normalizar
                   const tensor = tf.browser.fromPixels(imgData)
                       .toFloat()
                       .div(tf.scalar(255.0))
                       .expandDims(0);
                   
-                  const prediction = modelo.predict(tensor);
-                  return prediction.dataSync()[0];
+                  return modelo.predict(tensor).dataSync()[0];
               });
 
               let texto = "";
               let color = "";
 
-              // Ajuste de umbrales para mayor precisión
               if (score > 0.8) {
                   texto = "PERRO 🐶";
                   color = "#ec407a";
