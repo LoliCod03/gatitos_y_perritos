@@ -80,110 +80,97 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
     <script type="text/javascript">
-      var canvas = document.getElementById("canvas");
-      var video = document.getElementById("video");
-      var ctx = canvas.getContext("2d");
-      var modelo = null;
-      var currentStream = null;
-      var facingMode = "user";
+  var canvas = document.getElementById("canvas");
+  var video = document.getElementById("video");
+  var ctx = canvas.getContext("2d");
+  var modelo = null;
+  var currentStream = null;
+  var facingMode = "user";
 
-      // FUNCIÓN PARA CARGAR EL MODELO CON ANTICACHÉ Y PARCHE
-      async function cargarModelo() {
-          console.log("Cargando modelo...");
-          try {
-              // 1. Forzamos descarga del JSON fresco
-              const response = await fetch('./model.json?v=' + Date.now());
-              const modelJson = await response.json();
+  async function cargarModelo() {
+      console.log("Iniciando carga forzada...");
+      try {
+          // 1. Descarga el JSON
+          const response = await fetch('./model.json?v=' + Date.now());
+          const modelJson = await response.json();
 
-              // 2. PARCHE MANUAL: Si falta la forma de entrada, se la inyectamos en memoria
-              if (modelJson.modelTopology && modelJson.modelTopology.model_config) {
-                  let layers = modelJson.modelTopology.model_config.config.layers;
-                  if (layers[0].class_name === 'InputLayer' && !layers[0].config.batch_input_shape) {
-                      layers[0].config.batch_input_shape = [null, 150, 150, 3];
-                      console.log("Parche batch_input_shape aplicado con éxito");
-                  }
+          // 2. RECONSTRUCCIÓN TOTAL DE LA ENTRADA (Mazo de demolición)
+          // Esto soluciona el error de Keras 3 / InputLayer sea cual sea la estructura
+          if (modelJson.modelTopology && modelJson.modelTopology.model_config) {
+              const modelConfig = modelJson.modelTopology.model_config;
+              const layers = modelConfig.config.layers || modelConfig.layers;
+
+              if (layers && layers.length > 0) {
+                  // Forzamos la estructura que TensorFlow.js ama
+                  layers[0].config.batch_input_shape = [null, 150, 150, 3];
+                  layers[0].config.dtype = "float32";
+                  console.log("Estructura de capas parchada.");
               }
-
-              // 3. Cargamos el modelo desde el objeto modificado
-              modelo = await tf.loadLayersModel(tf.io.fromMemory(
-                  modelJson, 
-                  modelJson.weightsManifest, 
-                  window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1)
-              ));
-
-              document.getElementById("status").innerText = "¡IA Lista! ✨";
-              document.getElementById("status").className = "alert alert-success text-success text-center";
-              console.log("¡Modelo cargado!");
-          } catch (error) {
-              document.getElementById("status").innerText = "Error: El navegador bloqueó el modelo.";
-              document.getElementById("status").className = "alert alert-danger text-danger text-center";
-              console.error("Error detallado:", error);
           }
+
+          // 3. Intentar cargar
+          modelo = await tf.loadLayersModel(tf.io.fromMemory(
+              modelJson,
+              modelJson.weightsManifest,
+              window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1)
+          ));
+
+          document.getElementById("status").innerText = "¡IA Lista! ✨";
+          document.getElementById("status").className = "alert alert-success text-success text-center";
+          console.log("¡Logrado!");
+      } catch (error) {
+          console.error("Error final:", error);
+          document.getElementById("status").innerText = "Error: Intenta abrir en Incógnito.";
+          document.getElementById("status").className = "alert alert-danger text-danger text-center";
       }
+  }
 
-      window.onload = function() { 
-          mostrarCamara(); 
-          cargarModelo();
+  window.onload = function() { mostrarCamara(); cargarModelo(); }
+
+  function mostrarCamara() {
+      navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facingMode, width: 400, height: 400 } })
+          .then(function(stream) {
+              currentStream = stream;
+              video.srcObject = currentStream;
+              procesarCamara();
+              predecir();
+          })
+          .catch(err => console.log("Cámara error:", err));
+  }
+
+  function cambiarCamara() {
+      if (currentStream) { currentStream.getTracks().forEach(track => track.stop()); }
+      facingMode = (facingMode == "user") ? "environment" : "user";
+      mostrarCamara();
+  }
+
+  function procesarCamara() {
+      ctx.drawImage(video, 0, 0, 400, 400, 0, 0, 400, 400);
+      setTimeout(procesarCamara, 20);
+  }
+
+  async function predecir() {
+      if (modelo != null) {
+          const tempCanvas = document.getElementById("othercanvas");
+          const tempCtx = tempCanvas.getContext("2d");
+          tempCtx.drawImage(canvas, 0, 0, 400, 400, 0, 0, 150, 150);
+
+          const score = tf.tidy(() => {
+              const imgData = tempCtx.getImageData(0,0,150,150);
+              const tensor = tf.browser.fromPixels(imgData).toFloat().div(tf.scalar(255.0)).expandDims(0);
+              return modelo.predict(tensor).dataSync()[0];
+          });
+
+          let texto = score > 0.5 ? "PERRO 🐶" : "GATO 🐱";
+          let color = score > 0.5 ? "#ec407a" : "#ab47bc";
+          if (score > 0.4 && score < 0.6) { texto = "Buscando... 🔎"; color = "#888888"; }
+
+          document.getElementById("resultado").innerHTML = texto;
+          document.getElementById("resultado").style.color = color;
       }
-
-      function mostrarCamara() {
-          var opciones = { audio: false, video: { facingMode: facingMode, width: 400, height: 400 } };
-          navigator.mediaDevices.getUserMedia(opciones)
-              .then(function(stream) {
-                  currentStream = stream;
-                  video.srcObject = currentStream;
-                  procesarCamara();
-                  predecir();
-              })
-              .catch(err => console.log("Cámara error:", err));
-      }
-
-      function cambiarCamara() {
-          if (currentStream) { currentStream.getTracks().forEach(track => track.stop()); }
-          facingMode = (facingMode == "user") ? "environment" : "user";
-          mostrarCamara();
-      }
-
-      function procesarCamara() {
-          ctx.drawImage(video, 0, 0, 400, 400, 0, 0, 400, 400);
-          setTimeout(procesarCamara, 20);
-      }
-
-      async function predecir() {
-          if (modelo != null) {
-              const tempCanvas = document.getElementById("othercanvas");
-              const tempCtx = tempCanvas.getContext("2d");
-              tempCtx.drawImage(canvas, 0, 0, 400, 400, 0, 0, 150, 150);
-
-              const score = tf.tidy(() => {
-                  const imgData = tempCtx.getImageData(0,0,150,150);
-                  const tensor = tf.browser.fromPixels(imgData)
-                      .toFloat()
-                      .div(tf.scalar(255.0))
-                      .expandDims(0);
-                  
-                  return modelo.predict(tensor).dataSync()[0];
-              });
-
-              let texto = "";
-              let color = "";
-
-              if (score > 0.8) {
-                  texto = "PERRO 🐶";
-                  color = "#ec407a";
-              } else if (score < 0.2) {
-                  texto = "GATO 🐱";
-                  color = "#ab47bc";
-              } else {
-                  texto = "Buscando... 🔎";
-                  color = "#888888";
-              }
-
-              document.getElementById("resultado").innerHTML = texto;
-              document.getElementById("resultado").style.color = color;
-          }
-          setTimeout(predecir, 250);
-      }
-    </script>
+      setTimeout(predecir, 250);
+  }
+</script>
   </body>
 </html>
+
