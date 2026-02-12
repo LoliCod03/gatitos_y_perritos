@@ -3,162 +3,130 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Clasificador de Mascotas 🐾</title>
-
+    <title>Detector IA 🐾</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
     <style>
-      :root {
-        --rosa-principal: #ff85a2;
-        --rosa-oscuro: #f06292;
-        --rosa-claro: #fce4ec;
-      }
-      body { background-color: var(--rosa-claro); font-family: 'Segoe UI', sans-serif; }
-      .header {
-        background: var(--rosa-principal);
-        color: white;
-        padding: 20px 0;
-        border-bottom: 5px solid var(--rosa-oscuro);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-      }
-      #resultado {
-        font-weight: bold;
-        font-size: 3rem;
-        text-align: center;
-        min-height: 70px;
-        margin-top: 15px;
-        transition: all 0.3s;
-      }
-      .canvas-container { 
-        margin: 0 auto; 
-        border: 8px solid white; 
-        border-radius: 30px; 
-        overflow: hidden; 
-        box-shadow: 0 10px 25px rgba(240, 98, 146, 0.3);
-        background: #000;
-      }
-      .btn-personalizado {
-        background-color: var(--rosa-oscuro);
-        color: white;
-        border: none;
-        padding: 12px 30px;
-        border-radius: 50px;
-        font-weight: bold;
-      }
-      #status { border-radius: 15px; font-weight: bold; }
+      :root { --rosa: #ff85a2; --rosa-oscuro: #f06292; }
+      body { background-color: #fce4ec; font-family: sans-serif; }
+      .header { background: var(--rosa); color: white; padding: 20px; border-bottom: 5px solid var(--rosa-oscuro); margin-bottom: 20px; }
+      .canvas-container { margin: 0 auto; border: 8px solid white; border-radius: 30px; overflow: hidden; background: #000; width: 400px; height: 400px; max-width: 100%; }
+      #resultado { font-weight: bold; font-size: 3rem; text-align: center; margin-top: 15px; }
+      .btn-personalizado { background-color: var(--rosa-oscuro); color: white; border-radius: 50px; padding: 10px 30px; border: none; font-weight: bold; }
     </style>
   </head>
   <body>
     
     <header class="header text-center">
-        <h1 class="fw-bold">¿Perro o Gato? 🐶🐱</h1>
-        <p class="mb-0">Detección Inteligente en Tiempo Real</p>
+        <h1>¿Perro o Gato? 🐶🐱</h1>
     </header>
 
-    <main class="container">
-      <div class="row">
-        <div class="col-12 col-md-6 offset-md-3 text-center">
-          
-          <div id="status" class="alert alert-light mb-4">Iniciando sistema...</div>
+    <main class="container text-center">
+      <div id="status" class="alert alert-light">Iniciando sistema...</div>
 
-          <video id="video" playsinline autoplay style="width: 1px; visibility: hidden; position: absolute;"></video>
-          
-          <div class="canvas-container mb-4" style="width: 400px; height: 400px; max-width: 100%;">
-              <canvas id="canvas" width="400" height="400" style="width: 100%; height: 100%;"></canvas>
-          </div>
-          
-          <button class="btn btn-personalizado btn-lg mb-3" onclick="cambiarCamara();">🔄 Girar Cámara</button>
-
-          <canvas id="othercanvas" width="150" height="150" style="display: none"></canvas>
-          
-          <div id="resultado">...</div>
-        </div>
+      <div class="canvas-container mb-3">
+          <canvas id="canvas" width="400" height="400"></canvas>
       </div>
+
+      <button class="btn btn-personalizado mb-3" onclick="cambiarCamara()">🔄 Cambiar Cámara</button>
+      
+      <div id="resultado">...</div>
+
+      <video id="video" playsinline autoplay style="width: 1px; visibility: hidden; position: absolute;"></video>
+      <canvas id="othercanvas" width="150" height="150" style="display: none"></canvas>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
-    <script type="text/javascript">
-  var canvas = document.getElementById("canvas");
-  var video = document.getElementById("video");
-  var ctx = canvas.getContext("2d");
-  var modelo = null;
-  var currentStream = null;
-  var facingMode = "user";
+    <script>
+      var canvas = document.getElementById("canvas");
+      var video = document.getElementById("video");
+      var ctx = canvas.getContext("2d");
+      var modelo = null;
+      var facingMode = "user";
+      var currentStream = null;
 
-  async function cargarModelo() {
-      console.log("Cargando modelo de forma directa...");
-      try {
-          // Cargamos directamente el archivo. El ?v= evita la caché vieja.
-          // TensorFlow.js 4.22.0 debería reconocer el batch_input_shape que pusiste en el JSON.
-          modelo = await tf.loadLayersModel('./model.json?v=' + Date.now());
+      // --- AQUÍ ESTÁ EL CAMBIO CRÍTICO ---
+      async function cargarModelo() {
+          console.log("Iniciando carga limpia...");
+          try {
+              // 1. Descargamos el JSON fresco
+              const resp = await fetch('./model.json?v=' + Date.now());
+              let modelJson = await resp.json();
 
-          document.getElementById("status").innerText = "¡IA Lista! ✨";
-          document.getElementById("status").className = "alert alert-success text-success text-center";
-          console.log("¡Carga exitosa!");
-      } catch (error) {
-          console.error("Error al cargar:", error);
-          document.getElementById("status").innerText = "Error de configuración. Revisa el model.json";
-          document.getElementById("status").className = "alert alert-danger text-danger text-center";
+              // 2. PARCHE MANUAL: Forzamos la propiedad que te da error
+              // Buscamos la capa de entrada y le inyectamos el batch_input_shape
+              if (modelJson.modelTopology && modelJson.modelTopology.model_config) {
+                  let layers = modelJson.modelTopology.model_config.config.layers;
+                  if (layers && layers[0]) {
+                      layers[0].config.batch_input_shape = [null, 150, 150, 3];
+                      console.log("Parche batch_input_shape inyectado.");
+                  }
+              }
+
+              // 3. Cargamos el modelo usando el JSON que acabamos de arreglar
+              // Pasamos también la ruta para que encuentre los archivos .bin
+              const modelUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+              modelo = await tf.loadLayersModel(tf.io.fromMemory(
+                  modelJson.modelTopology,
+                  modelJson.weightsManifest,
+                  modelUrl
+              ));
+
+              document.getElementById("status").innerText = "¡IA Lista! ✨";
+              document.getElementById("status").className = "alert alert-success";
+              console.log("¡Carga exitosa!");
+          } catch (error) {
+              console.error("Error detallado:", error);
+              document.getElementById("status").innerText = "Error: Revisa el model.json";
+              document.getElementById("status").className = "alert alert-danger";
+          }
       }
-  }
+      // ----------------------------------
 
-  window.onload = function() { 
-      mostrarCamara(); 
-      cargarModelo();
-  }
-
-  function mostrarCamara() {
-      navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facingMode, width: 400, height: 400 } })
-          .then(function(stream) {
-              currentStream = stream;
-              video.srcObject = currentStream;
-              procesarCamara();
-              predecir();
-          })
-          .catch(err => console.log("Cámara error:", err));
-  }
-
-  function cambiarCamara() {
-      if (currentStream) { currentStream.getTracks().forEach(track => track.stop()); }
-      facingMode = (facingMode == "user") ? "environment" : "user";
-      mostrarCamara();
-  }
-
-  function procesarCamara() {
-      ctx.drawImage(video, 0, 0, 400, 400, 0, 0, 400, 400);
-      setTimeout(procesarCamara, 20);
-  }
-
-  async function predecir() {
-      if (modelo != null) {
-          const tempCanvas = document.getElementById("othercanvas");
-          const tempCtx = tempCanvas.getContext("2d");
-          tempCtx.drawImage(canvas, 0, 0, 400, 400, 0, 0, 150, 150);
-
-          const score = tf.tidy(() => {
-              const imgData = tempCtx.getImageData(0,0,150,150);
-              const tensor = tf.browser.fromPixels(imgData)
-                  .toFloat()
-                  .div(tf.scalar(255.0))
-                  .expandDims(0);
-              return modelo.predict(tensor).dataSync()[0];
-          });
-
-          let texto = score > 0.5 ? "PERRO 🐶" : "GATO 🐱";
-          let color = score > 0.5 ? "#ec407a" : "#ab47bc";
-          
-          // Si el valor es muy cercano a 0.5, está indeciso
-          if (score > 0.45 && score < 0.55) { texto = "Analizando... 🔎"; color = "#888888"; }
-
-          document.getElementById("resultado").innerHTML = texto;
-          document.getElementById("resultado").style.color = color;
+      function mostrarCamara() {
+          navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facingMode, width: 400, height: 400 } })
+              .then(function(stream) {
+                  currentStream = stream;
+                  video.srcObject = currentStream;
+                  procesarCamara();
+                  predecir();
+              });
       }
-      setTimeout(predecir, 250);
-  }
-</script>
+
+      function cambiarCamara() {
+          if (currentStream) { currentStream.getTracks().forEach(track => track.stop()); }
+          facingMode = (facingMode == "user") ? "environment" : "user";
+          mostrarCamara();
+      }
+
+      function procesarCamara() {
+          ctx.drawImage(video, 0, 0, 400, 400, 0, 0, 400, 400);
+          setTimeout(procesarCamara, 20);
+      }
+
+      async function predecir() {
+          if (modelo != null) {
+              const tempCanvas = document.getElementById("othercanvas");
+              const tempCtx = tempCanvas.getContext("2d");
+              tempCtx.drawImage(canvas, 0, 0, 400, 400, 0, 0, 150, 150);
+
+              const score = tf.tidy(() => {
+                  const imgData = tempCtx.getImageData(0,0,150,150);
+                  const tensor = tf.browser.fromPixels(imgData).toFloat().div(tf.scalar(255.0)).expandDims(0);
+                  return modelo.predict(tensor).dataSync()[0];
+              });
+
+              let texto = score > 0.5 ? "PERRO 🐶" : "GATO 🐱";
+              let color = score > 0.5 ? "#ec407a" : "#ab47bc";
+              if (score > 0.45 && score < 0.55) { texto = "Analizando... 🔎"; color = "#888888"; }
+
+              document.getElementById("resultado").innerHTML = texto;
+              document.getElementById("resultado").style.color = color;
+          }
+          setTimeout(predecir, 250);
+      }
+
+      window.onload = () => { mostrarCamara(); cargarModelo(); };
+    </script>
   </body>
 </html>
-
-
