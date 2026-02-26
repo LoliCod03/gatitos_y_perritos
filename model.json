@@ -23,6 +23,7 @@
             "class_name": "Conv2D",
             "config": {
               "name": "conv2d",
+              "trainable": true,
               "filters": 32,
               "kernel_size": [3, 3],
               "strides": [1, 1],
@@ -33,12 +34,13 @@
           },
           {
             "class_name": "MaxPooling2D",
-            "config": { "name": "max_pooling2d", "pool_size": [2, 2], "strides": [2, 2] }
+            "config": { "name": "max_pooling2d", "trainable": true, "pool_size": [2, 2], "strides": [2, 2], "padding": "valid" }
           },
           {
             "class_name": "Conv2D",
             "config": {
               "name": "conv2d_1",
+              "trainable": true,
               "filters": 64,
               "kernel_size": [3, 3],
               "activation": "relu"
@@ -46,12 +48,13 @@
           },
           {
             "class_name": "MaxPooling2D",
-            "config": { "name": "max_pooling2d_1", "pool_size": [2, 2] }
+            "config": { "name": "max_pooling2d_1", "trainable": true, "pool_size": [2, 2], "padding": "valid" }
           },
           {
             "class_name": "Conv2D",
             "config": {
               "name": "conv2d_2",
+              "trainable": true,
               "filters": 128,
               "kernel_size": [3, 3],
               "activation": "relu"
@@ -59,19 +62,19 @@
           },
           {
             "class_name": "MaxPooling2D",
-            "config": { "name": "max_pooling2d_2", "pool_size": [2, 2] }
+            "config": { "name": "max_pooling2d_2", "trainable": true, "pool_size": [2, 2], "padding": "valid" }
           },
           {
             "class_name": "Flatten",
-            "config": { "name": "flatten" }
+            "config": { "name": "flatten", "trainable": true }
           },
           {
             "class_name": "Dense",
-            "config": { "name": "dense", "units": 512, "activation": "relu" }
+            "config": { "name": "dense", "trainable": true, "units": 512, "activation": "relu" }
           },
           {
             "class_name": "Dense",
-            "config": { "name": "dense_1", "units": 1, "activation": "sigmoid" }
+            "config": { "name": "dense_1", "trainable": true, "units": 1, "activation": "sigmoid" }
           }
         ]
       }
